@@ -1,6 +1,9 @@
+# Unity generated files
 /TestMat/Library
 /TestMat/UserSettings
 /TestMat/Temp
 /TestMat/Logs
+
+# macOS
 .DS_Store
 **/.DS_Store
