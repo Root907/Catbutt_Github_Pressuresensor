@@ -1,2 +1,6 @@
 /TestMat/Library
 /TestMat/UserSettings
+/TestMat/Temp
+/TestMat/Logs
+.DS_Store
+**/.DS_Store

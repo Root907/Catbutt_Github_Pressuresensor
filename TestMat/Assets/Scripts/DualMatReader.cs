@@ -161,35 +161,91 @@ public class DualMatReader : MonoBehaviour
             else
                 rightDataBuffer = buffer;
 
-            // Arduino sends: 4 lines of data, then 2 empty lines
-            // Parse all lines and find the most recent complete 4x4 matrix
+            // Arduino sends: 4 lines of data, then empty lines, then "Touched cells: ..."
+            // Find 4 consecutive data lines (each with exactly 4 tab-separated values)
             string[] allLines = buffer.Split(new char[] { '\n' }, System.StringSplitOptions.None);
             
-            // Collect all valid data lines (lines with 4 values)
-            List<string> allValidLines = new List<string>();
-            for (int i = 0; i < allLines.Length; i++)
+            // Find the most recent complete 4x4 matrix by looking for 4 consecutive valid data lines
+            List<string> dataLines = new List<string>();
+            for (int i = allLines.Length - 1; i >= 0; i--)
             {
                 string line = allLines[i].Trim();
-                if (!string.IsNullOrEmpty(line))
+                if (string.IsNullOrEmpty(line))
                 {
-                    string[] tokens = line.Split(new char[] { '\t', ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
-                    if (tokens.Length >= 4)
+                    // Empty line - if we already have 4 lines, keep them; otherwise reset
+                    continue;
+                }
+                
+                // Skip "Touched cells" lines
+                if (line.StartsWith("Touched cells"))
+                {
+                    // Reset if we haven't found 4 lines yet
+                    if (dataLines.Count < 4)
                     {
-                        allValidLines.Add(line);
+                        dataLines.Clear();
+                    }
+                    continue;
+                }
+                
+                // Check if this is a valid data line (exactly 4 tab-separated integer values)
+                string[] tokens = line.Split(new char[] { '\t' }, System.StringSplitOptions.RemoveEmptyEntries);
+                if (tokens.Length == 4)
+                {
+                    // Verify all tokens are valid integers
+                    bool isValid = true;
+                    foreach (string token in tokens)
+                    {
+                        int temp;
+                        if (!int.TryParse(token, out temp))
+                        {
+                            isValid = false;
+                            break;
+                        }
+                    }
+                    
+                    if (isValid)
+                    {
+                        // Valid data line - insert at beginning to maintain order
+                        dataLines.Insert(0, line);
+                        
+                        // If we found 4 consecutive data lines, stop
+                        if (dataLines.Count >= 4)
+                        {
+                            // Keep only the last 4 (most recent)
+                            if (dataLines.Count > 4)
+                            {
+                                dataLines = dataLines.GetRange(dataLines.Count - 4, 4);
+                            }
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // Not valid integers, reset
+                        if (dataLines.Count < 4)
+                        {
+                            dataLines.Clear();
+                        }
+                    }
+                }
+                else
+                {
+                    // Not 4 tokens, reset if we haven't found 4 lines yet
+                    if (dataLines.Count < 4)
+                    {
+                        dataLines.Clear();
                     }
                 }
             }
 
-            // Use the last 4 valid lines (most recent complete matrix)
-            if (allValidLines.Count >= 4)
+            // Parse the 4 data lines if we found a complete matrix
+            if (dataLines.Count == 4)
             {
-                List<string> dataLines = allValidLines.GetRange(allValidLines.Count - 4, 4);
-                
-                // Parse the 4 lines
+                bool parseSuccess = true;
                 for(int r=0; r<4; r++)
                 {
-                    string[] tokens = dataLines[r].Split(new char[] { '\t', ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
-                    if (tokens.Length >= 4)
+                    string[] tokens = dataLines[r].Split(new char[] { '\t' }, System.StringSplitOptions.RemoveEmptyEntries);
+                    if (tokens.Length == 4)
                     {
                         for(int c=0; c<4; c++)
                         {
@@ -198,61 +254,89 @@ public class DualMatReader : MonoBehaviour
                             {
                                 mat[r,c] = value;
                             }
+                            else
+                            {
+                                parseSuccess = false;
+                                break;
+                            }
                         }
-                        
-                        if (enableDebugLog)
-                        {
-                            Debug.Log($"[{side}] Row {r}: {mat[r,0]} {mat[r,1]} {mat[r,2]} {mat[r,3]}");
-                        }
+                        if (!parseSuccess) break;
+                    }
+                    else
+                    {
+                        parseSuccess = false;
+                        break;
                     }
                 }
-
-                // Clear buffer after processing (keep only very recent unprocessed data)
-                // Keep last 100 chars in case there's incomplete data
-                if (buffer.Length > 100)
+                
+                if (parseSuccess)
                 {
-                    buffer = buffer.Substring(buffer.Length - 100);
-                }
-                else
-                {
-                    buffer = "";
-                }
-
-                // Update buffer
-                if (side == "Left")
-                    leftDataBuffer = buffer;
-                else
-                    rightDataBuffer = buffer;
-
-                // Store for debugging
-                string dataToStore = buffer.Length > 200 ? buffer.Substring(buffer.Length - 200) : buffer;
-                if (side == "Left")
-                    lastRawDataLeft = dataToStore;
-                else
-                    lastRawDataRight = dataToStore;
+                    if (enableDebugLog)
+                    {
+                        Debug.Log($"[{side}] Matrix updated:");
+                        Debug.Log($"[{side}]   [{mat[0,0],3},{mat[0,1],3},{mat[0,2],3},{mat[0,3],3}]");
+                        Debug.Log($"[{side}]   [{mat[1,0],3},{mat[1,1],3},{mat[1,2],3},{mat[1,3],3}]");
+                        Debug.Log($"[{side}]   [{mat[2,0],3},{mat[2,1],3},{mat[2,2],3},{mat[2,3],3}]");
+                        Debug.Log($"[{side}]   [{mat[3,0],3},{mat[3,1],3},{mat[3,2],3},{mat[3,3],3}]");
+                    }
                     
-                if (enableDebugLog)
-                {
-                    Debug.Log($"[{side}] Matrix updated:");
-                    Debug.Log($"[{side}]   [{mat[0,0],3},{mat[0,1],3},{mat[0,2],3},{mat[0,3],3}]");
-                    Debug.Log($"[{side}]   [{mat[1,0],3},{mat[1,1],3},{mat[1,2],3},{mat[1,3],3}]");
-                    Debug.Log($"[{side}]   [{mat[2,0],3},{mat[2,1],3},{mat[2,2],3},{mat[2,3],3}]");
-                    Debug.Log($"[{side}]   [{mat[3,0],3},{mat[3,1],3},{mat[3,2],3},{mat[3,3],3}]");
+                    // Clear buffer after successful parsing
+                    // Build the 4-line block to find in buffer
+                    string dataBlock = string.Join("\n", dataLines) + "\n";
+                    
+                    // Find the last occurrence of this block in the buffer
+                    int blockIndex = buffer.LastIndexOf(dataBlock);
+                    if (blockIndex >= 0)
+                    {
+                        // Keep only data after the 4-line block
+                        buffer = buffer.Substring(blockIndex + dataBlock.Length);
+                    }
+                    else
+                    {
+                        // Fallback: if we can't find exact match, try to find the last line
+                        string lastLine = dataLines[3] + "\n";
+                        int lastIndex = buffer.LastIndexOf(lastLine);
+                        if (lastIndex >= 0)
+                        {
+                            buffer = buffer.Substring(lastIndex + lastLine.Length);
+                        }
+                        else
+                        {
+                            // Last resort: clear most of buffer, keep only last 200 chars
+                            if (buffer.Length > 200)
+                            {
+                                buffer = buffer.Substring(buffer.Length - 200);
+                            }
+                            else
+                            {
+                                buffer = "";
+                            }
+                        }
+                    }
                 }
             }
             else
             {
-                // Incomplete packet, keep in buffer
-                // Limit buffer size to prevent memory issues
+                // Incomplete data, keep buffer but limit size
                 if (buffer.Length > 2000)
                 {
+                    // Keep only the last 1000 chars
                     buffer = buffer.Substring(buffer.Length - 1000);
-                    if (side == "Left")
-                        leftDataBuffer = buffer;
-                    else
-                        rightDataBuffer = buffer;
                 }
             }
+            
+            // Update buffer
+            if (side == "Left")
+                leftDataBuffer = buffer;
+            else
+                rightDataBuffer = buffer;
+
+            // Store for debugging
+            string dataToStore = buffer.Length > 200 ? buffer.Substring(buffer.Length - 200) : buffer;
+            if (side == "Left")
+                lastRawDataLeft = dataToStore;
+            else
+                lastRawDataRight = dataToStore;
         }
         catch (System.TimeoutException)
         {
