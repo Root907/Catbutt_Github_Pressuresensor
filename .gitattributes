@@ -1,2 +1,11 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Tell GitHub Linguist to ignore shader files in language statistics
+*.shader linguist-vendored
+*.cginc linguist-vendored
+*.hlsl linguist-vendored
+*.compute linguist-vendored
+
+# Explicitly mark C# as the primary language
+*.cs linguist-language=C#
